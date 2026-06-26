@@ -2,6 +2,7 @@
 
 const allScreens = document.querySelectorAll('.view-screen');
 
+// Side bar buttons
 const btnHome = document.getElementById('btn-home');
 const btnDeposit = document.getElementById('btn-deposit');
 const btnWithdrawal = document.getElementById('btn-withdrawal');
@@ -13,7 +14,19 @@ function switchScreen(targetScreenId) {
     })
 
     const activeScreen = document.getElementById(targetScreenId);
-    activeScreen.classList.remove('hidden');
+    if (activeScreen) {
+        activeScreen.classList.remove('hidden');
+
+        localStorage.setItem('activeATMScreen', targetScreenId);
+    }
+}
+
+const savedScreen = localStorage.getItem('activeATMScreen');
+
+if (savedScreen) {
+    switchScreen(savedScreen)
+} else {
+    switchScreen('screen-home')
 }
 
 btnHome.addEventListener('click', () => {
@@ -31,3 +44,20 @@ btnWithdrawal.addEventListener('click', () => {
 btnHistory.addEventListener('click', () => {
     switchScreen('screen-history');
 });
+
+// Home screen buttons
+const dashboardDepositBtn = document.getElementById('dashboard-deposit-btn')
+const dashboardWithdrawBtn = document.getElementById('dashboard-withdraw-btn')
+const dashboardHistoryBtn = document.getElementById('dashboard-history-btn')
+
+dashboardDepositBtn.addEventListener('click', () => {
+    switchScreen('screen-deposit');
+});
+
+dashboardWithdrawBtn.addEventListener('click', () => {
+    switchScreen('screen-withdrawal');
+});
+
+dashboardHistoryBtn.addEventListener('click', () => {
+    switchScreen('screen-history')
+})
