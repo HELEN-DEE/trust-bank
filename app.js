@@ -61,3 +61,19 @@ dashboardWithdrawBtn.addEventListener('click', () => {
 dashboardHistoryBtn.addEventListener('click', () => {
     switchScreen('screen-history')
 })
+
+// Deposit Logic
+let depositInputString = "";
+
+const displayElement = document.getElementById('deposit-display');
+const numButtons = document.querySelectorAll('keypad-num');
+const clearBtn = document.getElementById('btn-clear');
+const backspaceBtn = document.getElementById('btn-backspace');
+
+function updateDisplay() {
+    if (depositInputString === "" || depositInputString === "0") {
+        displayElement.textContent = "0.00"
+    } return;
+
+    const centsAmount = parseInt(depositInputString, 10);
+}
