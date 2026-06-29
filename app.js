@@ -66,14 +66,41 @@ dashboardHistoryBtn.addEventListener('click', () => {
 let depositInputString = "";
 
 const displayElement = document.getElementById('deposit-display');
-const numButtons = document.querySelectorAll('keypad-num');
+const numButtons = document.querySelectorAll('.keypad-num');
 const clearBtn = document.getElementById('btn-clear');
 const backspaceBtn = document.getElementById('btn-backspace');
 
 function updateDisplay() {
     if (depositInputString === "" || depositInputString === "0") {
         displayElement.textContent = "0.00"
-    } return;
+        return;
+    } 
 
     const centsAmount = parseInt(depositInputString, 10);
+    const dollarAmount = centsAmount/ 100;
+
+    displayElement.textContent = dollarAmount.toFixed(2);
 }
+
+numButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const valueClicked = button.textContent.trim();
+
+        if (depositInputString.length >= 7) return;
+        if (depositInputString === "" && valueClicked === "0") return;
+
+        depositInputString += valueClicked;
+
+        updateDisplay();
+    });
+});
+
+backspaceBtn.addEventListener('click', () => {
+    depositInputString = depositInputString.slice(0, -1);
+    updateDisplay();
+});
+
+clearBtn.addEventListener('click', () => {
+    depositInputString = "";
+    updateDisplay();
+});
