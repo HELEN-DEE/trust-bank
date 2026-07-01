@@ -124,7 +124,7 @@
                         <span class="text-[10px] font-bold uppercase tracking-wider text-[#b2c7ef]">Amount</span>
                     </div>
                     <!-- Connector Line -->
-                    <div class="flex-1 h-0.5 mx-1 bg-[#343537] -translate-y-3.5"></div>
+                    <div id="line-1" class="flex-1 h-0.5 mx-1 bg-[#343537] -translate-y-3.5"></div>
 
                     <!-- Verify (Inactive) -->
                     <div id="step-verify-group" class="flex flex-col items-center gap-2 z-10">
@@ -132,7 +132,7 @@
                         <span class="text-[10px] font-bold uppercase tracking-widest text-[#8e9098]">Verify</span>
                     </div>
                     <!-- Connector Line -->
-                    <div class="flex-1 h-0.5 bg-[#343537] mx-1 -translate-y-3.5"></div>
+                    <div id="line-2" class="flex-1 h-0.5 bg-[#343537] mx-1 -translate-y-3.5"></div>
 
                     <!-- Confirm (Inactive) -->
                     <div id="step-confirm-group" class="flex flex-col items-center gap-2 z-10">
@@ -165,7 +165,7 @@
                     <button class="keypad-num bg-[#38393c] px-5 py-3 flex justify-center items-center rounded-lg font-medium"> 8 </button>
                     <button class="keypad-num bg-[#38393c] px-5 py-3 flex justify-center items-center rounded-lg font-medium"> 9 </button>
                     <button id="btn-clear" class="bg-[#d79e1b] px-5 py-3 flex justify-center items-center rounded-lg uppercase text-[#121316] text-[12px] font-medium"> Clear </button>
-                    <button class="bg-[#38393c] px-5 py-3 flex justify-center items-center rounded-lg font-medium"> 0 </button>
+                    <button class="keypad-num bg-[#38393c] px-5 py-3 flex justify-center items-center rounded-lg font-medium"> 0 </button>
                     <button id="btn-backspace" class="bg-[#38393c] px-5 py-3 flex justify-center items-center rounded-lg"> 
                         <i data-lucide="delete" class="w-5 h-5"></i>
                     </button>
@@ -173,7 +173,7 @@
 
                 <!-- process buttons and and info -->
                 <div class="w-full max-w-[50%] flex flex-col gap-3">
-                    <button class="bg-[#006bb5] px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2">
+                    <button id="btn-deposit-action" class="bg-[#006bb5] px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2">
                         <p>Confirm Deposit</p>
                         <i data-lucide="circle-check" class="w-4 h-4"></i>
                     </button>
