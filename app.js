@@ -7,6 +7,7 @@ const btnHome = document.getElementById('btn-home');
 const btnDeposit = document.getElementById('btn-deposit');
 const btnWithdrawal = document.getElementById('btn-withdrawal');
 const btnHistory = document.getElementById('btn-history');
+const btnLogout = document.getElementById('btn-logout');
 
 function switchScreen(targetScreenId) {
     allScreens.forEach(screen => {
@@ -18,14 +19,6 @@ function switchScreen(targetScreenId) {
         activeScreen.classList.remove('hidden');
         localStorage.setItem('activeATMScreen', targetScreenId);
     }
-}
-
-const savedScreen = localStorage.getItem('activeATMScreen');
-
-if (savedScreen) {
-    switchScreen(savedScreen);
-} else {
-    switchScreen('screen-home');
 }
 
 btnHome.addEventListener('click', () => switchScreen('screen-home'));
@@ -42,16 +35,115 @@ dashboardDepositBtn.addEventListener('click', () => switchScreen('screen-deposit
 dashboardWithdrawBtn.addEventListener('click', () => switchScreen('screen-withdrawal'));
 dashboardHistoryBtn.addEventListener('click', () => switchScreen('screen-history'));
 
-// === Account balance (home screen) ===
+// === Account balance (persisted, drives both the home and history screens) ===
 
 const balanceValueEl = document.getElementById('balance-value');
-let accountBalance = parseFloat(balanceValueEl.textContent.replace(/,/g, ''));
+const historyBalanceValueEl = document.getElementById('history-balance-value');
+
+function loadBalance() {
+    const stored = localStorage.getItem('atmBalance');
+    return stored !== null ? parseFloat(stored) : 12450.00;
+}
+
+function saveBalance() {
+    localStorage.setItem('atmBalance', String(accountBalance));
+}
+
+let accountBalance = loadBalance();
 
 function renderBalance() {
-    balanceValueEl.textContent = accountBalance.toLocaleString('en-US', {
+    const formatted = accountBalance.toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
+    balanceValueEl.textContent = formatted;
+    if (historyBalanceValueEl) historyBalanceValueEl.textContent = formatted;
+}
+
+// === Transaction history (persisted, renders the History screen table) ===
+
+const transactionTableBody = document.getElementById('transaction-table-body');
+
+function loadTransactions() {
+    try {
+        const stored = localStorage.getItem('atmTransactions');
+        return stored ? JSON.parse(stored) : [];
+    } catch (err) {
+        return [];
+    }
+}
+
+function saveTransactions() {
+    localStorage.setItem('atmTransactions', JSON.stringify(transactions));
+}
+
+let transactions = loadTransactions();
+
+function formatTransactionDate(isoString) {
+    const d = new Date(isoString);
+    return d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+// type is 'Deposit' or 'Withdrawal'. amount is always a positive number.
+function addTransaction(type, amount, resultingBalance) {
+    const transaction = {
+        type,
+        amount,
+        date: new Date().toISOString(),
+        balanceAfter: resultingBalance,
+        description: type === 'Deposit'
+            ? 'ATM Terminal 8842 - Cash Deposit'
+            : 'ATM Terminal 8842 - Cash Withdrawal'
+    };
+    transactions.unshift(transaction); // newest first
+    saveTransactions();
+    renderTransactionHistory();
+}
+
+function renderTransactionHistory() {
+    if (!transactionTableBody) return;
+
+    if (transactions.length === 0) {
+        transactionTableBody.innerHTML = `
+            <tr>
+                <td colspan="4" class="px-5 py-10 text-center text-[#8e9098] text-sm">
+                    No transactions yet. Deposits and withdrawals will appear here.
+                </td>
+            </tr>`;
+        return;
+    }
+
+    transactionTableBody.innerHTML = transactions.map((tx) => {
+        const isDeposit = tx.type === 'Deposit';
+        const colorClass = isDeposit ? 'text-[#10da14]' : 'text-[#f63e4a]';
+        const icon = isDeposit ? 'arrow-down-left' : 'arrow-up-right';
+        const sign = isDeposit ? '+' : '-';
+        const balanceFormatted = tx.balanceAfter.toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+
+        return `
+            <tr>
+                <td class="px-5 py-3 text-[#c4c6cf] whitespace-nowrap">${formatTransactionDate(tx.date)}</td>
+                <td class="px-5 py-3 ${colorClass} whitespace-nowrap">
+                    <span class="flex items-center gap-1"><i data-lucide="${icon}" class="w-3.5 h-3.5"></i> ${tx.type}</span>
+                </td>
+                <td class="px-5 py-3 text-[#c4c6cf]">${tx.description}</td>
+                <td class="px-5 py-3 text-right ${colorClass} font-medium whitespace-nowrap">
+                    <div>${sign}$${tx.amount.toFixed(2)}</div>
+                    <div class="text-[10px] text-[#8e9098] font-normal">Bal: $${balanceFormatted}</div>
+                </td>
+            </tr>`;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
 }
 
 // === Custom alert modal (replaces window.alert) ===
@@ -65,7 +157,6 @@ const modalCloseBtn = document.getElementById('app-modal-close');
 function showModal(type, title, message) {
     const isSuccess = type === 'success';
 
-    
     modalIconWrapper.style.backgroundColor = isSuccess ? '#1a3f2e' : '#3f1a1a';
     modalIconWrapper.innerHTML = `<i data-lucide="${isSuccess ? 'check-circle-2' : 'x-circle'}" class="w-7 h-7" style="color:${isSuccess ? '#7ddc9e' : '#ffb4ab'}"></i>`;
 
@@ -85,14 +176,17 @@ modalOverlay.addEventListener('click', (e) => {
     if (e.target === modalOverlay) hideModal(); // clicking the dark backdrop also closes it
 });
 
+// ==== Shared constants ====
+const PIN_LENGTH = 4;
+const MAX_AMOUNT_DIGITS = 6;
+const CORRECT_PIN = "1234";
+const DAILY_WITHDRAWAL_LIMIT = 500;
+
 // ==== Deposit Flow ====
 // Steps: 1 = Amount, 2 = Verify, 3 = PIN, 4 = Processing/Confirm
-const PIN_LENGTH = 4;
-const MAX_AMOUNT_DIGITS = 6; 
-const CORRECT_PIN = "1234";
 
 let currentStep = 1;
-let depositAmountString = ""; 
+let depositAmountString = "";
 let pinString = "";
 
 const numButtons = document.querySelectorAll('.keypad-num');
@@ -113,9 +207,6 @@ const stepPinDot = document.getElementById('step-pin-dot');
 const stepPinGroup = document.getElementById('step-pin-group');
 const stepConfirmDot = document.getElementById('step-confirm-dot');
 const stepConfirmGroup = document.getElementById('step-confirm-group');
-const line1 = document.getElementById('line-1');
-const line2 = document.getElementById('line-2');
-const line3 = document.getElementById('line-3');
 
 // ---- Digit / backspace / clear handling ----
 // Steps 1 and 3 are the only two steps that accept input (amount, then PIN).
@@ -160,8 +251,9 @@ numButtons.forEach(button => {
 backspaceBtn.addEventListener('click', handleBackspace);
 clearBtn.addEventListener('click', handleClear);
 
-// Physical keyboard support 
+// Physical keyboard support — only while logged in and on the deposit screen
 document.addEventListener('keydown', (e) => {
+    if (appShell.classList.contains('hidden')) return;
     if (depositScreen.classList.contains('hidden')) return;
 
     if (e.key >= '0' && e.key <= '9') {
@@ -208,7 +300,7 @@ function renderPinDisplay() {
     displayContainer.innerHTML = `<div class="flex items-center justify-center py-5">${dots}</div>`;
 }
 
-// ---- Stepper visuals ----
+// ---- Stepper visuals (shared by both deposit and withdrawal steppers) ----
 function setStepDotState(dotEl, groupEl, active) {
     dotEl.className = "transition-all duration-300 rounded-full flex items-center justify-center";
     if (active) {
@@ -228,7 +320,7 @@ function setStepDotState(dotEl, groupEl, active) {
     }
 }
 
-// ---- Main render: draws whichever step is active ----
+// ---- Main render: draws whichever deposit step is active ----
 
 function renderStepFlow() {
     setStepDotState(stepAmountDot, stepAmountGroup, currentStep === 1);
@@ -264,7 +356,9 @@ function renderStepFlow() {
         const amount = parseInt(depositAmountString, 10);
         setTimeout(() => {
             accountBalance += amount;
+            saveBalance();
             renderBalance();
+            addTransaction('Deposit', amount, accountBalance);
             resetDepositFlow();
             switchScreen('screen-home');
             showModal('success', 'Deposit Successful', `$${amount}.00 has been added to your account. Your new balance is $${accountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`);
@@ -315,5 +409,308 @@ cancelBtn.addEventListener('click', () => {
     switchScreen('screen-home');
 });
 
-// Draw the initial state whenever the deposit screen first loads
+// ==== Withdrawal Flow ====
+// Mirrors the deposit flow exactly: 1 = Amount, 2 = Verify, 3 = PIN, 4 = Processing/Confirm.
+// The only difference is Step 1 also shows a quick-amount grid beside the keypad.
+
+let wdCurrentStep = 1;
+let withdrawalAmountString = "";
+let wdPinString = "";
+
+const wdNumButtons = document.querySelectorAll('.withdrawal-keypad-num');
+const wdClearBtn = document.getElementById('btn-withdrawal-clear');
+const wdBackspaceBtn = document.getElementById('btn-withdrawal-backspace');
+const wdConfirmBtn = document.getElementById('btn-withdrawal-action');
+const wdCancelBtn = document.getElementById('btn-withdrawal-cancel');
+const withdrawalTitle = document.getElementById('withdrawal-title');
+const withdrawalInstructions = document.getElementById('withdrawal-instructions');
+const withdrawalDisplayContainer = document.getElementById('withdrawal-display-container');
+const withdrawalScreen = document.getElementById('screen-withdrawal');
+const withdrawalQuickSelect = document.getElementById('withdrawal-quick-select');
+const quickAmountButtons = document.querySelectorAll('.quick-amount-btn');
+
+const wdStepAmountDot = document.getElementById('wd-step-amount-dot');
+const wdStepAmountGroup = document.getElementById('wd-step-amount-group');
+const wdStepVerifyDot = document.getElementById('wd-step-verify-dot');
+const wdStepVerifyGroup = document.getElementById('wd-step-verify-group');
+const wdStepPinDot = document.getElementById('wd-step-pin-dot');
+const wdStepPinGroup = document.getElementById('wd-step-pin-group');
+const wdStepConfirmDot = document.getElementById('wd-step-confirm-dot');
+const wdStepConfirmGroup = document.getElementById('wd-step-confirm-group');
+
+function handleWithdrawalDigit(digit) {
+    if (wdCurrentStep === 1) {
+        if (withdrawalAmountString.length >= MAX_AMOUNT_DIGITS) return;
+        if (withdrawalAmountString === "" && digit === "0") return;
+        withdrawalAmountString += digit;
+        renderWithdrawalAmountDisplay();
+    } else if (wdCurrentStep === 3) {
+        if (wdPinString.length >= PIN_LENGTH) return;
+        wdPinString += digit;
+        renderWithdrawalPinDisplay();
+    }
+}
+
+function handleWithdrawalBackspace() {
+    if (wdCurrentStep === 1) {
+        withdrawalAmountString = withdrawalAmountString.slice(0, -1);
+        renderWithdrawalAmountDisplay();
+    } else if (wdCurrentStep === 3) {
+        wdPinString = wdPinString.slice(0, -1);
+        renderWithdrawalPinDisplay();
+    }
+}
+
+function handleWithdrawalClear() {
+    if (wdCurrentStep === 1) {
+        withdrawalAmountString = "";
+        renderWithdrawalAmountDisplay();
+    } else if (wdCurrentStep === 3) {
+        wdPinString = "";
+        renderWithdrawalPinDisplay();
+    }
+}
+
+wdNumButtons.forEach(button => {
+    button.addEventListener('click', () => handleWithdrawalDigit(button.textContent.trim()));
+});
+wdBackspaceBtn.addEventListener('click', handleWithdrawalBackspace);
+wdClearBtn.addEventListener('click', handleWithdrawalClear);
+
+// Quick-amount presets only apply while on the Amount step
+quickAmountButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        if (wdCurrentStep !== 1) return;
+        const presetAmount = button.getAttribute('data-amount');
+        withdrawalAmountString = String(parseInt(presetAmount, 10));
+        renderWithdrawalAmountDisplay();
+    });
+});
+
+// Physical keyboard support — only while logged in and on the withdrawal screen
+document.addEventListener('keydown', (e) => {
+    if (appShell.classList.contains('hidden')) return;
+    if (withdrawalScreen.classList.contains('hidden')) return;
+
+    if (e.key >= '0' && e.key <= '9') {
+        handleWithdrawalDigit(e.key);
+    } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleWithdrawalBackspace();
+    } else if (e.key === 'Enter') {
+        wdConfirmBtn.click();
+    } else if (e.key === 'Escape') {
+        wdCancelBtn.click();
+    }
+});
+
+function renderWithdrawalAmountDisplay() {
+    const amount = withdrawalAmountString === "" ? "0" : parseInt(withdrawalAmountString, 10);
+    withdrawalDisplayContainer.innerHTML = `
+        <span class="flex items-end gap-1">
+            <p class="text-lg">$</p>
+            <p class="text-5xl font-bold tracking-wider">${amount}.00</p>
+        </span>
+    `;
+}
+
+function renderWithdrawalVerifyDisplay() {
+    const amount = withdrawalAmountString === "" ? "0" : parseInt(withdrawalAmountString, 10);
+    withdrawalDisplayContainer.innerHTML = `
+        <p class="text-[11px] uppercase tracking-widest text-[#8e9098] mb-1">You are about to withdraw</p>
+        <span class="flex items-end gap-1">
+            <p class="text-lg">$</p>
+            <p class="text-5xl font-bold tracking-wider">${amount}.00</p>
+        </span>
+    `;
+}
+
+function renderWithdrawalPinDisplay() {
+    let dots = "";
+    for (let i = 0; i < PIN_LENGTH; i++) {
+        const filled = i < wdPinString.length;
+        dots += `<span class="inline-block w-4 h-4 rounded-full mx-2 ${filled ? 'bg-[#b2c7ef]' : 'bg-[#343537] border border-[#44474e]'}"></span>`;
+    }
+    withdrawalDisplayContainer.innerHTML = `<div class="flex items-center justify-center py-5">${dots}</div>`;
+}
+
+function renderWithdrawalStepFlow() {
+    setStepDotState(wdStepAmountDot, wdStepAmountGroup, wdCurrentStep === 1);
+    setStepDotState(wdStepVerifyDot, wdStepVerifyGroup, wdCurrentStep === 2);
+    setStepDotState(wdStepPinDot, wdStepPinGroup, wdCurrentStep === 3);
+    setStepDotState(wdStepConfirmDot, wdStepConfirmGroup, wdCurrentStep === 4);
+
+    wdConfirmBtn.disabled = false;
+    wdConfirmBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+
+    // The quick-amount grid only makes sense while choosing the amount
+    withdrawalQuickSelect.classList.toggle('hidden', wdCurrentStep !== 1);
+
+    if (wdCurrentStep === 1) {
+        withdrawalTitle.textContent = "Select withdrawal amount";
+        withdrawalInstructions.textContent = "Choose a quick amount or use the keypad, then continue.";
+        wdConfirmBtn.innerHTML = `<span>Next: Verify</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>`;
+        renderWithdrawalAmountDisplay();
+    } else if (wdCurrentStep === 2) {
+        withdrawalTitle.textContent = "Verify your withdrawal";
+        withdrawalInstructions.textContent = "Double check the amount below before continuing.";
+        wdConfirmBtn.innerHTML = `<span>Continue</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>`;
+        renderWithdrawalVerifyDisplay();
+    } else if (wdCurrentStep === 3) {
+        withdrawalTitle.textContent = "Enter your PIN";
+        withdrawalInstructions.textContent = "Enter your 4-digit PIN to authorize this withdrawal.";
+        wdConfirmBtn.innerHTML = `<span>Confirm Withdrawal</span> <i data-lucide="circle-check" class="w-4 h-4"></i>`;
+        renderWithdrawalPinDisplay();
+    } else if (wdCurrentStep === 4) {
+        withdrawalTitle.textContent = "Processing";
+        withdrawalInstructions.textContent = "Transaction executing securely. Do not close this terminal.";
+        wdConfirmBtn.innerHTML = `<span>Processing...</span> <i data-lucide="loader" class="w-4 h-4 animate-spin"></i>`;
+        wdConfirmBtn.disabled = true;
+        wdConfirmBtn.classList.add('opacity-60', 'cursor-not-allowed');
+
+        const amount = parseInt(withdrawalAmountString, 10);
+        setTimeout(() => {
+            accountBalance -= amount;
+            saveBalance();
+            renderBalance();
+            addTransaction('Withdrawal', amount, accountBalance);
+            resetWithdrawalFlow();
+            switchScreen('screen-home');
+            showModal('success', 'Withdrawal Successful', `$${amount}.00 has been dispensed. Your new balance is $${accountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`);
+        }, 2500);
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function resetWithdrawalFlow() {
+    withdrawalAmountString = "";
+    wdPinString = "";
+    wdCurrentStep = 1;
+    renderWithdrawalStepFlow();
+}
+
+wdConfirmBtn.addEventListener('click', () => {
+    if (wdCurrentStep === 1) {
+        const amount = parseInt(withdrawalAmountString, 10) || 0;
+        if (!amount) {
+            showModal('error', 'Invalid Amount', 'Please enter an amount greater than $0 first.');
+            return;
+        }
+        if (amount > DAILY_WITHDRAWAL_LIMIT) {
+            showModal('error', 'Daily Limit Exceeded', `You can withdraw up to $${DAILY_WITHDRAWAL_LIMIT.toFixed(2)} per day.`);
+            return;
+        }
+        if (amount > accountBalance) {
+            showModal('error', 'Insufficient Funds', 'This amount exceeds your available balance.');
+            return;
+        }
+        wdCurrentStep = 2;
+    } else if (wdCurrentStep === 2) {
+        wdCurrentStep = 3;
+    } else if (wdCurrentStep === 3) {
+        if (wdPinString.length !== PIN_LENGTH) {
+            showModal('error', 'Incomplete PIN', 'Please enter your full 4-digit PIN.');
+            return;
+        }
+        if (wdPinString !== CORRECT_PIN) {
+            showModal('error', 'Incorrect PIN', 'The PIN you entered is incorrect. Please try again.');
+            wdPinString = "";
+            renderWithdrawalPinDisplay();
+            return;
+        }
+        wdCurrentStep = 4;
+    }
+    renderWithdrawalStepFlow();
+});
+
+wdCancelBtn.addEventListener('click', () => {
+    resetWithdrawalFlow();
+    switchScreen('screen-home');
+});
+
+// ==== Login / Logout (frontend-only session gate) ====
+// NOTE: these credentials are hardcoded client-side for demo purposes only.
+// This is not real authentication — anyone can read them in this file.
+const VALID_USERNAME = "alexjohnson";
+const VALID_PASSWORD = "trust1234";
+
+const screenLogin = document.getElementById('screen-login');
+const appShell = document.getElementById('app-shell');
+const loginForm = document.getElementById('login-form');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const loginErrorText = document.getElementById('login-error-text');
+const lastAccessValueEl = document.getElementById('last-access-value');
+
+function showLoginScreen() {
+    screenLogin.classList.remove('hidden');
+    appShell.classList.add('hidden');
+    appShell.classList.remove('flex');
+    loginPasswordInput.value = "";
+    loginError.classList.add('hidden');
+    loginUsernameInput.focus();
+}
+
+function showAppShell() {
+    screenLogin.classList.add('hidden');
+    appShell.classList.remove('hidden');
+    appShell.classList.add('flex');
+
+    const savedScreen = localStorage.getItem('activeATMScreen');
+    switchScreen(savedScreen || 'screen-home');
+}
+
+function attemptLogin(username, password) {
+    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+        localStorage.setItem('atmLoggedIn', 'true');
+
+        // "Last access" shows the previous session's login time, then we stamp a new one
+        const previousAccess = localStorage.getItem('atmLastAccess');
+        if (lastAccessValueEl) {
+            lastAccessValueEl.textContent = previousAccess
+                ? new Date(previousAccess).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+                : 'First login';
+        }
+        localStorage.setItem('atmLastAccess', new Date().toISOString());
+
+        showAppShell();
+        return true;
+    }
+    return false;
+}
+
+loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const success = attemptLogin(loginUsernameInput.value.trim(), loginPasswordInput.value);
+    if (!success) {
+        loginErrorText.textContent = "Incorrect username or password. Please try again.";
+        loginError.classList.remove('hidden');
+        loginPasswordInput.value = "";
+        loginPasswordInput.focus();
+    }
+});
+
+btnLogout.addEventListener('click', () => {
+    // Balance and transaction history are intentionally left in localStorage —
+    // only the login flag is cleared, so logging back in restores everything.
+    localStorage.removeItem('atmLoggedIn');
+    resetDepositFlow();
+    resetWithdrawalFlow();
+    localStorage.setItem('activeATMScreen', 'screen-home');
+    showLoginScreen();
+});
+
+// ==== Initial render ====
+
+renderBalance();
+renderTransactionHistory();
 renderStepFlow();
+renderWithdrawalStepFlow();
+
+if (localStorage.getItem('atmLoggedIn') === 'true') {
+    showAppShell();
+} else {
+    showLoginScreen();
+}
