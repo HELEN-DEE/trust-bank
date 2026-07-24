@@ -26,6 +26,74 @@ btnDeposit.addEventListener('click', () => switchScreen('screen-deposit'));
 btnWithdrawal.addEventListener('click', () => switchScreen('screen-withdrawal'));
 btnHistory.addEventListener('click', () => switchScreen('screen-history'));
 
+// === Mobile navigation drawer ===
+// Below the md breakpoint the sidebar is an off-canvas drawer (translated fully
+// off-screen). The hamburger button slides it in and dims the rest of the page
+// with an overlay; from md up the sidebar is always visible and this code is inert.
+const mobileMenuToggle = document.getElementById('btn-mobile-menu-toggle');
+const mobileMenuIcon = document.getElementById('mobile-menu-icon');
+const mobileNavOverlay = document.getElementById('mobile-nav-overlay');
+const sidebarNav = document.getElementById('sidebar-nav');
+
+function isMobileMenuOpen() {
+    return sidebarNav.classList.contains('translate-x-0');
+}
+
+function openMobileMenu() {
+    sidebarNav.classList.remove('-translate-x-full');
+    sidebarNav.classList.add('translate-x-0');
+    mobileNavOverlay.classList.remove('hidden');
+    mobileMenuToggle.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('overflow-hidden');
+    if (mobileMenuIcon) {
+        mobileMenuIcon.setAttribute('data-lucide', 'x');
+        if (window.lucide) lucide.createIcons();
+    }
+}
+
+function closeMobileMenu() {
+    sidebarNav.classList.add('-translate-x-full');
+    sidebarNav.classList.remove('translate-x-0');
+    mobileNavOverlay.classList.add('hidden');
+    mobileMenuToggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('overflow-hidden');
+    if (mobileMenuIcon) {
+        mobileMenuIcon.setAttribute('data-lucide', 'menu');
+        if (window.lucide) lucide.createIcons();
+    }
+}
+
+function toggleMobileMenu() {
+    if (isMobileMenuOpen()) {
+        closeMobileMenu();
+    } else {
+        openMobileMenu();
+    }
+}
+
+mobileMenuToggle.addEventListener('click', toggleMobileMenu);
+mobileNavOverlay.addEventListener('click', closeMobileMenu);
+
+// Picking any nav item closes the drawer so the next screen is visible
+[btnHome, btnDeposit, btnWithdrawal, btnHistory, btnLogout].forEach(btn => {
+    btn.addEventListener('click', closeMobileMenu);
+});
+
+// If the viewport is resized past the md breakpoint while the drawer is open
+// (e.g. rotating a tablet, resizing a browser window), reset to the desktop state.
+window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768 && isMobileMenuOpen()) {
+        closeMobileMenu();
+    }
+});
+
+// Escape closes the drawer, same as it cancels a deposit/withdrawal in progress
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isMobileMenuOpen()) {
+        closeMobileMenu();
+    }
+});
+
 // Home screen buttons
 const dashboardDepositBtn = document.getElementById('dashboard-deposit-btn');
 const dashboardWithdrawBtn = document.getElementById('dashboard-withdraw-btn');
@@ -144,6 +212,132 @@ function renderTransactionHistory() {
     }).join('');
 
     if (window.lucide) lucide.createIcons();
+}
+
+// === Print / download receipt ===
+// window.print() with the @media print rules in <head> is the standard vanilla-JS
+// way to get a PDF out of the browser with no extra library: the browser's own
+// print dialog offers "Save as PDF" as a destination on every major platform.
+// If printing genuinely isn't available (e.g. some embedded webviews), we fall
+// back to downloading a plain-text receipt instead, so the button always does
+// something useful either way.
+
+const btnPrintReceipt = document.getElementById('btn-print-receipt');
+const printReceiptContainer = document.getElementById('print-receipt');
+
+function getReceiptData() {
+    return {
+        generatedAt: new Date(),
+        accountHolder: 'Alex Johnson',
+        terminalId: '8842',
+        balance: accountBalance,
+        transactions
+    };
+}
+
+function formatMoney(amount) {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderPrintReceipt() {
+    if (!printReceiptContainer) return;
+    const data = getReceiptData();
+
+    const rowsHtml = data.transactions.length === 0
+        ? `<tr><td colspan="4" style="padding:12px 8px;color:#666;">No transactions yet.</td></tr>`
+        : data.transactions.map((tx) => {
+            const isDeposit = tx.type === 'Deposit';
+            const amountClass = isDeposit ? 'deposit-amount' : 'withdrawal-amount';
+            const sign = isDeposit ? '+' : '-';
+            return `
+                <tr>
+                    <td>${formatTransactionDate(tx.date)}</td>
+                    <td>${tx.type}</td>
+                    <td>${tx.description}</td>
+                    <td class="amount-cell ${amountClass}">${sign}$${tx.amount.toFixed(2)}</td>
+                </tr>`;
+        }).join('');
+
+    printReceiptContainer.innerHTML = `
+        <h1>Trust Bank</h1>
+        <div class="receipt-meta">
+            Account Statement &middot; Terminal ${data.terminalId} &middot; ${data.accountHolder}<br>
+            Generated ${data.generatedAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+        </div>
+        <div class="receipt-balance">Available Balance: $${formatMoney(data.balance)}</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th class="amount-cell">Amount</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+        <p class="receipt-footer">This is a simulated receipt generated by the Trust Bank ATM demo. Not a real financial document.</p>
+    `;
+}
+
+function buildReceiptText() {
+    const data = getReceiptData();
+    const lines = [
+        'TRUST BANK — ACCOUNT STATEMENT',
+        `Terminal ${data.terminalId} · ${data.accountHolder}`,
+        `Generated: ${data.generatedAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`,
+        `Available Balance: $${formatMoney(data.balance)}`,
+        '',
+        'DATE                TYPE        AMOUNT       DESCRIPTION'
+    ];
+
+    if (data.transactions.length === 0) {
+        lines.push('No transactions yet.');
+    } else {
+        data.transactions.forEach((tx) => {
+            const sign = tx.type === 'Deposit' ? '+' : '-';
+            const dateStr = formatTransactionDate(tx.date).padEnd(20, ' ');
+            const typeStr = tx.type.padEnd(12, ' ');
+            const amountStr = `${sign}$${tx.amount.toFixed(2)}`.padEnd(13, ' ');
+            lines.push(`${dateStr}${typeStr}${amountStr}${tx.description}`);
+        });
+    }
+
+    lines.push('', 'This is a simulated receipt generated by the Trust Bank ATM demo.');
+    return lines.join('\n');
+}
+
+function downloadReceiptAsFile() {
+    const blob = new Blob([buildReceiptText()], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trust-bank-receipt-${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+if (btnPrintReceipt) {
+    btnPrintReceipt.addEventListener('click', () => {
+        try {
+            renderPrintReceipt();
+            if (typeof window.print === 'function') {
+                window.print();
+            } else {
+                downloadReceiptAsFile();
+            }
+        } catch (err) {
+            console.error('Print receipt failed, falling back to download:', err);
+            try {
+                downloadReceiptAsFile();
+            } catch (fallbackErr) {
+                console.error('Receipt download fallback also failed:', fallbackErr);
+                showModal('error', 'Receipt Unavailable', 'We could not prepare your receipt right now. Please try again.');
+            }
+        }
+    });
 }
 
 // === Custom alert modal (replaces window.alert) ===

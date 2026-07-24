@@ -6,6 +6,39 @@
     <title>ATM Bank Simulation</title>
     <link href="./dist/output.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <!--
+        Print-only stylesheet for the receipt. Written as plain CSS (not Tailwind
+        utilities) so it renders correctly even if dist/output.css hasn't been
+        rebuilt since #print-receipt was added — it has no external dependency.
+    -->
+    <style>
+        #print-receipt { display: none; }
+        @media print {
+            body * { visibility: hidden; }
+            #print-receipt, #print-receipt * { visibility: visible; }
+            #print-receipt {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                padding: 24px;
+                background: #ffffff;
+                color: #111111;
+                font-family: Arial, Helvetica, sans-serif;
+            }
+            #print-receipt h1 { font-size: 20px; margin: 0 0 2px 0; }
+            #print-receipt .receipt-meta { font-size: 12px; color: #444444; margin-bottom: 16px; }
+            #print-receipt .receipt-balance { font-size: 16px; font-weight: bold; margin-bottom: 16px; }
+            #print-receipt table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            #print-receipt th, #print-receipt td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #cccccc; }
+            #print-receipt th { border-bottom: 2px solid #111111; }
+            #print-receipt .amount-cell { text-align: right; }
+            #print-receipt .deposit-amount { color: #1a7a1a; }
+            #print-receipt .withdrawal-amount { color: #b32020; }
+            #print-receipt .receipt-footer { font-size: 11px; color: #666666; margin-top: 20px; }
+        }
+    </style>
 </head>
 <body class="bg-[#121316] font-inter min-h-screen flex flex-col">
 
@@ -67,15 +100,26 @@
     <!-- Everything below is hidden until login succeeds -->
     <div id="app-shell" class="hidden flex-col min-h-screen flex-1">
 
-        <div class="flex items-center gap-3 bg-[#1f2022] px-8 py-4 border-b border-[#44474e]">
-            <i class="fa-solid fa-university text-[#b2c7ef] text-2xl"></i>
-            <h1 class="text-[#b2c7ef] text-2xl font-bold uppercase tracking-wide">Trust Bank</h1>
+        <div class="flex items-center justify-between bg-[#1f2022] px-4 md:px-8 py-4 border-b border-[#44474e]">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-university text-[#b2c7ef] text-2xl"></i>
+                <h1 class="text-[#b2c7ef] text-xl md:text-2xl font-bold uppercase tracking-wide">Trust Bank</h1>
+            </div>
+            <!-- Hamburger toggle: mobile only, controls the off-canvas sidebar below -->
+            <button id="btn-mobile-menu-toggle" class="md:hidden text-[#e3e2e5] hover:text-[#b2c7ef] transition p-2 -mr-2" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar-nav">
+                <i id="mobile-menu-icon" data-lucide="menu" class="w-6 h-6"></i>
+            </button>
         </div>
 
-        <div class="flex flex-1 flex-col md:flex-row min-h-[calc(100vh-68px)]">
-            <div class="bg-[#1f2022] py-6 w-full md:w-1/5 flex flex-row md:flex-col justify-between border-b md:border-b-0 md:border-r border-[#44474e]">
-                <div class="flex flex-col gap-6 w-full">
-                    <div class="hidden md:flex gap-3 items-center px-6 pb-4 border-b border-[#44474e]">
+        <div class="flex flex-1 min-h-[calc(100vh-68px)] relative">
+
+            <!-- Backdrop: dims the background while the mobile drawer is open. Mobile only. -->
+            <div id="mobile-nav-overlay" class="fixed inset-0 bg-black/60 z-30 hidden md:hidden" aria-hidden="true"></div>
+
+            <!-- Sidebar: off-canvas drawer below the md breakpoint, static column from md up -->
+            <div id="sidebar-nav" class="fixed md:static top-0 left-0 h-full md:h-auto w-72 max-w-[80vw] md:w-1/5 md:max-w-none bg-[#1f2022] py-6 flex flex-col justify-between border-r border-[#44474e] z-40 -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+                <div class="flex flex-col gap-6">
+                    <div class="flex gap-3 items-center px-6 pb-4 border-b border-[#44474e]">
                         <img
                             src="./assets/profile-img.jpeg"
                             alt="profile-pic"
@@ -86,32 +130,32 @@
                         </span>
                     </div>
 
-                    <nav class="flex flex-row md:flex-col justify-around md:justify-start gap-1 md:gap-3 w-full px-2 md:px-0">
-                        <button id="btn-home" class="flex flex-col md:flex-row items-center gap-1 md:gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-3 md:px-6 py-3 md:py-4 md:hover:border-l-4 md:hover:border-[#b2c7ef] transition text-center md:text-left w-full group">
+                    <nav class="flex flex-col gap-3">
+                        <button id="btn-home" class="flex items-center gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-6 py-4 hover:border-l-4 hover:border-[#b2c7ef] transition text-left w-full group">
                             <i data-lucide="house" class="w-5 h-5 group-hover:text-[#b2c7ef]"></i>
-                            <span class="font-medium text-[11px] md:text-sm">Home</span>
+                            <span class="font-medium text-sm">Home</span>
                         </button>
 
-                        <button id="btn-deposit" class="flex flex-col md:flex-row items-center gap-1 md:gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-3 md:px-6 py-3 md:py-4 md:hover:border-l-4 md:hover:border-[#b2c7ef] transition text-center md:text-left w-full group">
+                        <button id="btn-deposit" class="flex items-center gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-6 py-4 hover:border-l-4 hover:border-[#b2c7ef] transition text-left w-full group">
                             <i data-lucide="circle-plus" class="w-5 h-5 group-hover:text-[#b2c7ef]"></i>
-                            <span class="font-medium text-[11px] md:text-sm">Deposit</span>
+                            <span class="font-medium text-sm">Deposit</span>
                         </button>
 
-                        <button id="btn-withdrawal" class="flex flex-col md:flex-row items-center gap-1 md:gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-3 md:px-6 py-3 md:py-4 md:hover:border-l-4 md:hover:border-[#b2c7ef] transition text-center md:text-left w-full group">
+                        <button id="btn-withdrawal" class="flex items-center gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-6 py-4 hover:border-l-4 hover:border-[#b2c7ef] transition text-left w-full group">
                             <i data-lucide="minus-circle" class="w-5 h-5 group-hover:text-[#b2c7ef]"></i>
-                            <span class="font-medium text-[11px] md:text-sm">Withdrawal</span>
+                            <span class="font-medium text-sm">Withdrawal</span>
                         </button>
 
-                        <button id="btn-history" class="flex flex-col md:flex-row items-center gap-1 md:gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-3 md:px-6 py-3 md:py-4 md:hover:border-l-4 md:hover:border-[#b2c7ef] transition text-center md:text-left w-full group">
+                        <button id="btn-history" class="flex items-center gap-3 text-[#e3e2e5] hover:bg-[#111c2ce3] hover:text-[#b2c7ef] px-6 py-4 hover:border-l-4 hover:border-[#b2c7ef] transition text-left w-full group">
                             <i data-lucide="history" class="w-5 h-5 group-hover:text-[#b2c7ef]"></i>
-                            <span class="font-medium text-[11px] md:text-sm">History</span>
+                            <span class="font-medium text-sm">History</span>
                         </button>
                     </nav>
                 </div>
 
-                <div class="px-2 md:px-6 md:mt-auto flex items-center md:block">
-                    <button id="btn-logout" class="flex gap-2 md:gap-3 items-center justify-center text-[#e3e2e5] bg-[#93000a] hover:bg-[#b80014] px-3 md:px-4 py-2.5 md:py-3 w-full rounded-lg transition font-medium text-[11px] md:text-sm shadow-md">
-                        <i data-lucide="log-out" class="w-4 h-4 md:w-5 md:h-5"></i>
+                <div class="px-6 mt-auto">
+                    <button id="btn-logout" class="flex gap-3 items-center justify-center text-[#e3e2e5] bg-[#93000a] hover:bg-[#b80014] px-4 py-3 w-full rounded-lg transition font-medium text-sm shadow-md">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
                         <span>Logout</span>
                     </button>
                 </div>
@@ -430,7 +474,11 @@
     </div>
     <!-- ============ END APP SHELL ============ -->
 
-    <!-- Custom alert modal — replaces the default browser alert() so we control the look -->
+    <!-- ============ PRINT RECEIPT ============ -->
+    <!-- @media print rules in <head> so the screen UI never shows it. -->
+    <div id="print-receipt" aria-hidden="true"></div>
+
+    <!-- Custom alert modal k -->
     <div id="app-modal-overlay" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden px-4">
         <div id="app-modal-box" class="bg-[#1f2022] border border-[#44474e] rounded-2xl p-8 max-w-sm w-full flex flex-col items-center gap-3 shadow-2xl">
             <div id="app-modal-icon-wrapper" class="w-14 h-14 rounded-full flex items-center justify-center"></div>
